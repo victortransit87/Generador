@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LMA Exam Prep (Local)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel para traducir JSX en el navegador -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+    </style>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'sans-serif'] },
+          }
+        }
+      }
+    </script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased">
+    <div id="root"></div>
+
+    <!-- AQUI ESTA TODA LA LOGICA DE LA APLICACION -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useCallback } = React;
+
+        // --- UTILS: SM2 Algorithm ---
+        const calculateSM2 = (question, isCorrect, currentReps) => {
+            const now = Date.now();
+            const DEFAULT_EF = 2.5;
+            const prev = currentReps[question.id] || { 
+                ef: DEFAULT_EF, 
+                rep: 0, 
+                interval: 0, 
+                epigrafe: question.epigrafe,
+                next: 0 
+            };
+
+            let newRep = { ...prev, lastResult: isCorrect };
+
+            if (isCorrect) {
+                newRep.rep = prev.rep + 1;
+                if (newRep.rep === 1) {
+                    newRep.interval = 1;
+                } else if (newRep.rep === 2) {
+                    newRep.interval = 6;
+                } else {
+                    newRep.interval = Math.round(prev.interval * prev.ef);
+                }
+                newRep.ef = Math.max(1.3, prev.ef + 0.1);
+                newRep.next = now + newRep.interval * 24 * 60 * 60 * 1000;
+            } else {
+                newRep.rep = 0;
+                newRep.interval = 0;
+                newRep.next = now;
+            }
+            return newRep;
+        };
+
+        // --- HOOK: Question Bank ---
+        const generateUID = () => Math.random().toString(36).substr(2, 9);
+        
+        const INITIAL_QUESTIONS = [
+            {
+                id: 'init_1',
+                epigrafe: 15,
+                question: "¿Cuál es la partícula con carga negativa?",
+                options: ["Protón", "Electrón", "Neutrón"],
+                answer: 1,
+                explanation: "El electrón es una partícula subatómica con una carga eléctrica elemental negativa."
+            }
+        ];
+
+        const useQuestionBank = () => {
+            const [questions, setQuestions] = useState([]);
+            const [reps, setReps] = useState({});
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                const storedQ = localStorage.getItem('qBank');
+                const storedR = localStorage.getItem('reps');
+                if (storedQ) setQuestions(JSON.parse(storedQ));
+                else setQuestions(INITIAL_QUESTIONS);
+                
+                if (storedR) setReps(JSON.parse(storedR));
+                setLoading(false);
+            }, []);
+
+            useEffect(() => {
+                if (!loading) localStorage.setItem('qBank', JSON.stringify(questions));
+            }, [questions, loading]);
+
+            useEffect(() => {
+                if (!loading) localStorage.setItem('reps', JSON.stringify(reps));
+            }, [reps, loading]);
+
+            const addQuestion = (q) => {
+                const newQ = { ...q, id: generateUID() };
+                setQuestions(prev => [...prev, newQ]);
+            };
+
+            const updateQuestion = (id, updated) => {
+                setQuestions(prev => prev.map(q => q.id === id ? { ...q, ...updated } : q));
+            };
+
+            const deleteQuestion = (id) => {
+                setQuestions(prev => prev.filter(q => q.id !== id));
+                const newReps = { ...reps };
+                delete newReps[id];
+                setReps(newReps);
+            };
+
+            const updateRep = (id, data) => {
+                setReps(prev => ({ ...prev, [id]: data }));
+            };
+            
+            const resetProgress = () => setReps({});
+
+            const importQuestions = (imported, replace = false) => {
+                const valid = imported.filter(q => q.question && q.options && typeof q.answer === 'number');
+                const prepared = valid.map(q => ({...q, id: q.id || generateUID()}));
+                if (replace) {
+                    setQuestions(prepared);
+                    setReps({});
+                } else {
+                    setQuestions(prev => [...prev, ...prepared]);
+                }
+            };
+
+            return { questions, reps, loading, addQuestion, updateQuestion, deleteQuestion, updateRep, resetProgress, importQuestions, setQuestions };
+        };
+
+        // --- COMPONENT: AdminPanel ---
+        const AdminPanel = ({ questions, onImport, onDeleteAll, onDeleteEpigrafe, onDeleteQuestion, onUpdateQuestion, onExport, onBack }) => {
+            const [jsonInput, setJsonInput] = useState('');
+            const [searchTerm, setSearchTerm] = useState('');
+            const [editingId, setEditingId] = useState(null);
+            const [editForm, setEditForm] = useState({});
+            const [selectedEpiDelete, setSelectedEpiDelete] = useState('');
+
+            const epigrafes = Array.from(new Set(questions.map(q => q.epigrafe))).sort((a, b) => a - b);
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target?.result);
+                        onImport(data, false);
+                        alert('Importado correctamente');
+                    } catch (err) { alert('JSON inválido'); }
+                };
+                reader.readAsText(file);
+            };
+
+            const handleJsonPaste = () => {
+                try {
+                    const data = JSON.parse(jsonInput);
+                    onImport(data, false);
+                    setJsonInput('');
+                    alert('Importado correctamente');
+                } catch (err) { alert('JSON inválido'); }
+            };
+            
+            const handleHtmlBackup = () => {
+                const html = document.documentElement.outerHTML;
+                const questionsJson = JSON.stringify(questions, null, 2);
+                // Reemplazamos la const INITIAL_QUESTIONS con el estado actual
+                const regex = /const INITIAL_QUESTIONS = \[[\s\S]*?\];/;
+                
+                if (!regex.test(html)) {
+                    alert("No se pudo generar el backup: No se encontró la estructura de datos original.");
+                    return;
+                }
+                
+                const newHtml = html.replace(regex, `const INITIAL_QUESTIONS = ${questionsJson};`);
+                
+                const blob = new Blob([newHtml], {type: 'text/html'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `LMA_Prep_Backup_${new Date().toISOString().slice(0,10)}.html`;
+                a.click();
+            };
+
+            const startEdit = (q) => {
+                setEditingId(q.id);
+                setEditForm({ ...q });
+            };
+
+            const saveEdit = () => {
+                if (editingId && editForm) {
+                    onUpdateQuestion(editingId, editForm);
+                    setEditingId(null);
+                }
+            };
+
+            const filteredQuestions = questions.filter(q => 
+                q.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                q.epigrafe.toString().includes(searchTerm)
+            );
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-2xl font-bold text-slate-800">Administración</h2>
+                        <button onClick={onBack} className="text-sm text-slate-500 hover:text-slate-800">← Volver</button>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <h3 className="font-semibold text-slate-700">Importar/Exportar</h3>
+                            <div className="flex flex-wrap gap-2">
+                                <label className="bg-blue-50 text-blue-600 px-3 py-1 rounded text-sm cursor-pointer hover:bg-blue-100">
+                                    Subir JSON
+                                    <input type="file" className="hidden" accept=".json" onChange={handleFileUpload} />
+                                </label>
+                                <button onClick={onExport} className="bg-slate-100 text-slate-600 px-3 py-1 rounded text-sm hover:bg-slate-200">Exportar JSON</button>
+                                <button onClick={handleHtmlBackup} className="bg-purple-100 text-purple-700 px-3 py-1 rounded text-sm hover:bg-purple-200 border border-purple-200">
+                                    💾 Backup App + Datos
+                                </button>
+                            </div>
+                            <textarea 
+                                className="w-full text-xs border p-2 rounded mt-2" 
+                                rows={2} 
+                                placeholder="Pegar JSON aquí..."
+                                value={jsonInput}
+                                onChange={(e) => setJsonInput(e.target.value)}
+                            />
+                            <button onClick={handleJsonPaste} disabled={!jsonInput} className="bg-blue-600 text-white hover:bg-blue-700 text-xs py-1 px-2 w-full rounded">Importar Texto</button>
+                        </div>
+
+                        <div className="space-y-2">
+                            <h3 className="font-semibold text-red-700">Zona de Peligro</h3>
+                            <div className="flex gap-2 items-center">
+                                <select 
+                                    className="border p-2 rounded text-sm w-full"
+                                    value={selectedEpiDelete}
+                                    onChange={(e) => setSelectedEpiDelete(e.target.value)}
+                                >
+                                    <option value="">Seleccionar Epígrafe...</option>
+                                    {epigrafes.map(e => <option key={e} value={e}>{e}</option>)}
+                                </select>
+                                <button 
+                                    onClick={() => {
+                                        if(window.confirm(`¿Borrar todo el epígrafe ${selectedEpiDelete}?`)) 
+                                        onDeleteEpigrafe(Number(selectedEpiDelete));
+                                    }}
+                                    disabled={!selectedEpiDelete}
+                                    className="bg-red-100 text-red-700 px-3 py-2 rounded hover:bg-red-200 disabled:opacity-50 text-sm whitespace-nowrap"
+                                >
+                                    Borrar Epi
+                                </button>
+                            </div>
+                            <button 
+                                onClick={() => { if(window.confirm("¿Borrar TODAS las preguntas?")) onDeleteAll(); }}
+                                className="w-full bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700 text-sm"
+                            >
+                                Borrar Banco Completo
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <input 
+                            type="text" 
+                            placeholder="Buscar pregunta..." 
+                            className="w-full border p-2 rounded-lg"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                        <div className="max-h-[600px] overflow-y-auto space-y-2 pr-1">
+                            {filteredQuestions.slice(0, 50).map(q => (
+                                <div key={q.id} className="bg-white p-3 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
+                                    {editingId === q.id ? (
+                                        <div className="space-y-2">
+                                            <div className="flex gap-2">
+                                                <input type="number" value={editForm.epigrafe} onChange={e => setEditForm({...editForm, epigrafe: Number(e.target.value)})} className="border p-1 rounded w-20 text-sm" placeholder="Epi" />
+                                                <input type="number" value={editForm.answer} onChange={e => setEditForm({...editForm, answer: Number(e.target.value)})} className="border p-1 rounded w-20 text-sm" placeholder="Correcta (idx)" />
+                                            </div>
+                                            <input className="border p-1 rounded w-full font-semibold text-sm" value={editForm.question} onChange={e => setEditForm({...editForm, question: e.target.value})} />
+                                            <textarea className="border p-1 rounded w-full text-sm" value={editForm.options?.join('|')} onChange={e => setEditForm({...editForm, options: e.target.value.split('|')})} placeholder="Opciones separadas por |" />
+                                            <div className="flex gap-2 justify-end">
+                                                <button onClick={() => setEditingId(null)} className="text-slate-500 text-sm">Cancelar</button>
+                                                <button onClick={saveEdit} className="text-green-600 font-bold text-sm">Guardar</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex justify-between items-start gap-4">
+                                            <div>
+                                                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">Epi {q.epigrafe}</span>
+                                                <p className="font-medium mt-1 text-slate-800 text-sm">{q.question}</p>
+                                                <p className="text-xs text-slate-500 mt-1">{q.options.length} opciones. Resp: {q.answer}</p>
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <button onClick={() => startEdit(q)} className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">Editar</button>
+                                                <button onClick={() => {if(window.confirm('¿Eliminar?')) onDeleteQuestion(q.id)}} className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">Borrar</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            {filteredQuestions.length === 0 && <p className="text-center text-slate-400">No hay preguntas</p>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- COMPONENT: QuizScreen ---
+        const QuizScreen = ({ questions, mode, reps, onComplete, onExit }) => {
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [selectedOption, setSelectedOption] = useState(null);
+            const [answers, setAnswers] = useState(new Array(questions.length).fill(null));
+            const [doubts, setDoubts] = useState(new Set());
+            const [showFeedback, setShowFeedback] = useState(false);
+
+            const currentQ = questions[currentIndex];
+            const progress = ((currentIndex + 1) / questions.length) * 100;
+
+            const handleOptionSelect = (index) => {
+                if (mode === 'review' && showFeedback) return;
+                setSelectedOption(index);
+                
+                const newAnswers = [...answers];
+                newAnswers[currentIndex] = index;
+                setAnswers(newAnswers);
+
+                if (mode === 'review') {
+                    setShowFeedback(true);
+                }
+            };
+
+            const handleNext = () => {
+                if (currentIndex < questions.length - 1) {
+                    setCurrentIndex(prev => prev + 1);
+                    setSelectedOption(null);
+                    setShowFeedback(false);
+                } else {
+                    finishQuiz();
+                }
+            };
+
+            const finishQuiz = () => {
+                const results = questions.map((q, i) => ({
+                    question: q,
+                    answer: answers[i] !== null ? answers[i] : -1,
+                    correct: answers[i] === q.answer,
+                    doubt: doubts.has(i)
+                }));
+                onComplete(results);
+            };
+
+            const toggleDoubt = () => {
+                const newDoubts = new Set(doubts);
+                if (newDoubts.has(currentIndex)) newDoubts.delete(currentIndex);
+                else newDoubts.add(currentIndex);
+                setDoubts(newDoubts);
+            };
+
+            const searchGoogle = () => {
+                const query = encodeURIComponent(currentQ.question);
+                window.open(`https://www.google.com/search?q=${query}`, '_blank');
+            };
+
+            const getOptionClass = (idx) => {
+                const base = "p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 flex items-center justify-between group ";
+                
+                if (mode === 'review' && showFeedback) {
+                    if (idx === currentQ.answer) return base + "bg-green-100 border-green-500 text-green-800 font-medium";
+                    if (idx === selectedOption) return base + "bg-red-100 border-red-500 text-red-800";
+                    return base + "border-slate-200 opacity-50 cursor-not-allowed";
+                }
+
+                if (selectedOption === idx) return base + "bg-blue-50 border-blue-500 ring-1 ring-blue-500 shadow-md";
+                return base + "bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50";
+            };
+
+            return (
+                <div className="max-w-3xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                        <div className="flex items-center gap-4">
+                            <button onClick={onExit} className="text-slate-400 hover:text-slate-600">✕</button>
+                            <span className="font-mono text-slate-500 text-sm">
+                                {currentIndex + 1} / {questions.length}
+                            </span>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input 
+                                type="checkbox" 
+                                checked={doubts.has(currentIndex)} 
+                                onChange={toggleDoubt}
+                                className="w-4 h-4 text-amber-500 rounded focus:ring-amber-500"
+                            />
+                            <span className={`text-sm font-medium ${doubts.has(currentIndex) ? 'text-amber-600' : 'text-slate-400'}`}>
+                                Marcar Duda
+                            </span>
+                        </label>
+                    </div>
+
+                    <div className="h-2 bg-slate-200 rounded-full mb-8 overflow-hidden">
+                        <div 
+                            className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-500 ease-out"
+                            style={{ width: `${progress}%` }}
+                        />
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 md:p-10 mb-6 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-400"></div>
+                        <span className="inline-block bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded mb-4 uppercase tracking-wider">
+                            Epígrafe {currentQ.epigrafe}
+                        </span>
+                        <h2 className="text-xl md:text-2xl font-semibold text-slate-800 mb-8 leading-relaxed">
+                            {currentQ.question}
+                        </h2>
+                        <div className="space-y-3">
+                            {currentQ.options.map((opt, idx) => (
+                                <div 
+                                    key={idx} 
+                                    onClick={() => handleOptionSelect(idx)}
+                                    className={getOptionClass(idx)}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-sm font-bold
+                                            ${mode === 'review' && showFeedback && idx === currentQ.answer ? 'border-green-600 bg-green-600 text-white' : 
+                                                selectedOption === idx ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 text-slate-400 group-hover:border-blue-300'}
+                                        `}>
+                                            {String.fromCharCode(65 + idx)}
+                                        </div>
+                                        <span>{opt}</span>
+                                    </div>
+                                    {mode === 'review' && showFeedback && idx === currentQ.answer && <span className="text-green-600">✔</span>}
+                                    {mode === 'review' && showFeedback && idx === selectedOption && idx !== currentQ.answer && <span className="text-red-500">✖</span>}
+                                </div>
+                            ))}
+                        </div>
+                        {mode === 'review' && showFeedback && (
+                            <div className="mt-8 pt-6 border-t border-slate-100 animate-fade-in">
+                                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-2">Explicación</h3>
+                                <p className="text-slate-700 bg-slate-50 p-4 rounded-lg border-l-4 border-slate-400">
+                                    {currentQ.explanation || "Sin explicación predefinida."}
+                                </p>
+                                <div className="mt-4">
+                                    <button onClick={searchGoogle} className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors">
+                                        Buscar en Google
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex justify-end">
+                        <button
+                            onClick={handleNext}
+                            disabled={selectedOption === null}
+                            className={`
+                                px-8 py-3 rounded-xl font-bold shadow-lg transition-all transform
+                                ${selectedOption === null 
+                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-1 hover:shadow-blue-200/50'}
+                            `}
+                        >
+                            {currentIndex === questions.length - 1 ? 'Finalizar Examen' : 'Siguiente'}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- COMPONENT: App ---
+        const App = () => {
+            const { questions, reps, loading, addQuestion, updateQuestion, deleteQuestion, updateRep, importQuestions, resetProgress, setQuestions } = useQuestionBank();
+            const [mode, setMode] = useState('start');
+            const [quizMode, setQuizMode] = useState('review');
+            const [activeQuestions, setActiveQuestions] = useState([]);
+            const [quizResults, setQuizResults] = useState([]);
+            const [selectedEpi, setSelectedEpi] = useState('all');
+            const [numQuestions, setNumQuestions] = useState(24);
+
+            const epigrafes = useMemo(() => {
+                return Array.from(new Set(questions.map(q => q.epigrafe))).sort((a, b) => a - b);
+            }, [questions]);
+
+            const stats = useMemo(() => {
+                const total = questions.length;
+                const studied = Object.keys(reps).length;
+                const mastered = Object.values(reps).filter(r => r.ef > 2.5).length;
+                return { total, studied, mastered };
+            }, [questions, reps]);
+
+            const startQuiz = () => {
+                const now = Date.now();
+                let pool = questions.filter(q => {
+                    if (selectedEpi !== 'all' && q.epigrafe !== Number(selectedEpi)) return false;
+                    const r = reps[q.id];
+                    if (!r) return true; 
+                    return r.next <= now;
+                });
+
+                if (pool.length === 0) {
+                    alert("No hay preguntas pendientes para repasar en este criterio.");
+                    return;
+                }
+                
+                // Shuffle
+                pool = pool.sort(() => Math.random() - 0.5).slice(0, numQuestions);
+                setActiveQuestions(pool);
+                setMode('quiz');
+            };
+
+            const handleQuizComplete = (results) => {
+                results.forEach(r => {
+                    const newRep = calculateSM2(r.question, r.correct, reps);
+                    if (r.doubt) newRep.duda = true;
+                    updateRep(r.question.id, newRep);
+                });
+                setQuizResults(results);
+                setMode('results');
+            };
+
+            const downloadBackup = () => {
+                const dataStr = JSON.stringify(questions, null, 2);
+                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+                const exportFileDefaultName = 'questions_backup.json';
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', exportFileDefaultName);
+                linkElement.click();
+            };
+
+            if (loading) return <div className="flex h-screen items-center justify-center text-slate-500">Cargando...</div>;
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 bg-slate-100 font-sans">
+                    <div className="max-w-4xl mx-auto">
+                        {mode === 'start' && (
+                            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 md:p-12 animate-fade-in">
+                                <header className="text-center mb-10">
+                                    <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 mb-3">
+                                        Examen TMA Parte 66
+                                    </h1>
+                                    <p className="text-slate-500 text-lg">Versión Local - Sin Conexión</p>
+                                </header>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                    <div className="bg-slate-50 p-4 rounded-xl text-center border border-slate-100">
+                                        <span className="block text-3xl font-bold text-slate-700">{stats.total}</span>
+                                        <span className="text-xs text-slate-400 uppercase font-semibold">Preguntas</span>
+                                    </div>
+                                    <div className="bg-blue-50 p-4 rounded-xl text-center border border-blue-100">
+                                        <span className="block text-3xl font-bold text-blue-600">{stats.studied}</span>
+                                        <span className="text-xs text-blue-400 uppercase font-semibold">Estudiadas</span>
+                                    </div>
+                                    <div className="bg-green-50 p-4 rounded-xl text-center border border-green-100">
+                                        <span className="block text-3xl font-bold text-green-600">{stats.mastered}</span>
+                                        <span className="text-xs text-green-400 uppercase font-semibold">Dominadas</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6 max-w-md mx-auto">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700">Modo</label>
+                                        <div className="flex bg-slate-100 p-1 rounded-lg">
+                                            <button onClick={() => setQuizMode('review')} className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${quizMode === 'review' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Repaso</button>
+                                            <button onClick={() => setQuizMode('exam')} className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${quizMode === 'exam' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Examen</button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700">Epígrafe</label>
+                                        <select value={selectedEpi} onChange={(e) => setSelectedEpi(e.target.value)} className="w-full p-3 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                                            <option value="all">Todos</option>
+                                            {epigrafes.map(e => <option key={e} value={e}>Epígrafe {e}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700">Cantidad</label>
+                                        <input type="number" min="5" max="100" value={numQuestions} onChange={(e) => setNumQuestions(Number(e.target.value))} className="w-full p-3 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                                    </div>
+                                    <button onClick={startQuiz} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all">
+                                        Comenzar Práctica
+                                    </button>
+                                    <div className="grid grid-cols-2 gap-4 mt-4">
+                                        <button onClick={() => setMode('admin')} className="text-slate-500 text-sm hover:text-slate-800">⚙️ Admin</button>
+                                        <button onClick={() => {if(window.confirm("¿Resetear todo?")) resetProgress()}} className="text-red-400 text-sm hover:text-red-600">↺ Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {mode === 'quiz' && <QuizScreen questions={activeQuestions} mode={quizMode} reps={reps} onComplete={handleQuizComplete} onExit={() => setMode('start')} />}
+
+                        {mode === 'results' && (
+                            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 animate-fade-in">
+                                <div className="text-center mb-8">
+                                    <h2 className="text-3xl font-bold text-slate-800 mb-2">Resultados</h2>
+                                    <div className="text-6xl font-black text-blue-600 mb-4">
+                                        {Math.round((quizResults.filter(r => r.correct).length / quizResults.length) * 100)}%
+                                    </div>
+                                    <p className="text-slate-500">{quizResults.filter(r => r.correct).length} correctas de {quizResults.length}</p>
+                                </div>
+                                <div className="flex justify-center gap-4">
+                                    <button onClick={() => setMode('start')} className="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300">Volver</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {mode === 'admin' && <AdminPanel questions={questions} onImport={importQuestions} onDeleteAll={() => setQuestions([])} onDeleteEpigrafe={(epi) => setQuestions(questions.filter(q => q.epigrafe !== epi))} onDeleteQuestion={deleteQuestion} onUpdateQuestion={updateQuestion} onExport={downloadBackup} onBack={() => setMode('start')} />}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
