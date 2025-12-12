@@ -1,11 +1,31 @@
-import React from 'react';
-import { Copy, Download, FileText, FileDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { Copy, Download, FileText, FileDown, PlayCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import QuizScreen from './QuizScreen'; // Import the new component
 
 const ResultsViewer = ({ generatedQuestions }) => {
+    const [isTestMode, setIsTestMode] = useState(false);
+
     if (!generatedQuestions || generatedQuestions.length === 0) return null;
 
+    // --- TEST MODE HANDLER ---
+    if (isTestMode) {
+        return (
+            <QuizScreen
+                questions={generatedQuestions}
+                mode="review" // Allows instant feedback
+                onComplete={(results) => {
+                    const score = results.filter(r => r.correct).length;
+                    alert(`Examen Finalizado.\nAciertos: ${score} de ${results.length} (${Math.round(score / results.length * 100)}%)`);
+                    setIsTestMode(false);
+                }}
+                onExit={() => setIsTestMode(false)}
+            />
+        );
+    }
+
+    // --- NORMAL MODE HANDLERS ---
     const copyToClipboard = () => {
         navigator.clipboard.writeText(JSON.stringify(generatedQuestions, null, 2));
         alert('¡Preguntas copiadas!');
@@ -109,22 +129,31 @@ const ResultsViewer = ({ generatedQuestions }) => {
                 </h3>
                 <div className="flex gap-2">
                     <button
-                        onClick={copyToClipboard}
-                        className="px-3 py-1.5 bg-indigo-500/20 text-indigo-300 rounded hover:bg-indigo-500/30 text-sm flex items-center gap-2 transition-colors"
+                        onClick={() => setIsTestMode(true)}
+                        className="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-500 text-sm flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20"
                     >
-                        <Copy className="w-4 h-4" /> Copiar
+                        <PlayCircle className="w-4 h-4" /> Hacer Test
+                    </button>
+                    <button
+                        onClick={copyToClipboard}
+                        className="px-3 py-1.5 bg-slate-700/50 text-slate-300 rounded hover:bg-slate-700 text-sm flex items-center gap-2 transition-colors"
+                        title="Copiar JSON"
+                    >
+                        <Copy className="w-4 h-4" />
                     </button>
                     <button
                         onClick={downloadJson}
                         className="px-3 py-1.5 bg-green-500/20 text-green-300 rounded hover:bg-green-500/30 text-sm flex items-center gap-2 transition-colors"
+                        title="Descargar JSON"
                     >
-                        <Download className="w-4 h-4" /> JSON
+                        <Download className="w-4 h-4" />
                     </button>
                     <button
                         onClick={downloadPdf}
                         className="px-3 py-1.5 bg-red-500/20 text-red-300 rounded hover:bg-red-500/30 text-sm flex items-center gap-2 transition-colors"
+                        title="Descargar PDF"
                     >
-                        <FileDown className="w-4 h-4" /> PDF
+                        <FileDown className="w-4 h-4" />
                     </button>
                 </div>
             </div>
