@@ -72,22 +72,24 @@ const TopicManager = ({
             </div>
 
             {/* Actions Row 1: Refinement */}
-            <div className="flex gap-2">
-                <button
-                    onClick={onAnalyze}
-                    disabled={isProcessing}
-                    className="flex-1 py-2 rounded-lg border border-slate-600 text-slate-400 hover:bg-slate-800 transition-colors disabled:opacity-50 text-xs flex items-center justify-center gap-1"
-                    title="Usar detector Regex"
-                >
-                    <span>↺</span> Regex
-                </button>
+            {/* Actions Row 1: Index Detection */}
+            <div className="space-y-2">
                 <button
                     onClick={onAiIndex}
                     disabled={isProcessing}
-                    className="flex-1 py-2 rounded-lg border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 transition-colors disabled:opacity-50 text-xs flex items-center justify-center gap-1"
-                    title="Usar IA"
+                    className="w-full btn-primary py-2 rounded-lg text-white font-medium text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+                    title="Crear Índice Inteligente con IA"
                 >
-                    <span>✨</span> IA
+                    <span>✨</span> Crear Índice Inteligente (AI)
+                </button>
+
+                <button
+                    onClick={onAnalyze}
+                    disabled={isProcessing}
+                    className="w-full py-2 rounded-lg border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 transition-colors disabled:opacity-50 text-xs flex items-center justify-center gap-1"
+                    title="Detectar Índice con Regex"
+                >
+                    <span>↺</span> Detectar Índice Clásico (Regex)
                 </button>
             </div>
 

@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { AlertCircle, FileText } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Upload, FileText, Check, AlertCircle, Loader2, StopCircle, Play, Download, Save, FolderOpen, RefreshCw, Layers, Edit3, Trash2 } from 'lucide-react';
+import jsPDF from 'jspdf';
 import { extractTextFromFile } from '../../utils/fileParser';
 import { analyzeTopics, generateQuestions as generateGeminiQuestions, generateStructuralIndex as generateGeminiIndex } from '../../services/gemini';
 import { generateQuestionsDeepSeek, analyzeTopicsDeepSeek, generateStructuralIndexDeepSeek, validateDeepSeekConnection } from '../../services/deepseek';
@@ -10,11 +11,13 @@ import TopicManager from './TopicManager';
 import ExamSettings from './ExamSettings';
 import GenerationControls from './GenerationControls';
 import ResultsViewer from './ResultsViewer';
+import InstructionsModal from './InstructionsModal';
 
 const QuestionGenerator = () => {
     // 1. Core State
     const [provider, setProvider] = useState('gemini'); // 'gemini' | 'deepseek'
     const [apiKey, setApiKey] = useState('');
+    const [showHelp, setShowHelp] = useState(false);
     const [file, setFile] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState(null);
@@ -536,23 +539,36 @@ const QuestionGenerator = () => {
                                 }
                             } catch (e) { alert("❌ Error: " + e.message); }
                         }}
-                        className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors"
+                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors flex items-center gap-2 text-sm font-medium"
                         title="Verificar conexión"
                     >
-                        ⚡
+                        ⚡ Probar
+                    </button>
+                    <button
+                        onClick={() => setShowHelp(true)}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2 font-medium"
+                        title="Ver Instrucciones"
+                    >
+                        <AlertCircle className="w-5 h-5" />
+                        Ayuda
                     </button>
                 </div>
             </div>
 
-            {/* Error Banner */}
+            {/* ERROR BANNER */}
             {error && (
-                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 animate-in slide-in-from-top-2">
-                    <AlertCircle className="w-5 h-5" />
-                    <span>{error}</span>
+                <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 mb-6 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <h3 className="text-red-400 font-semibold text-sm">Error</h3>
+                        <p className="text-red-300/80 text-sm mt-1">{error}</p>
+                    </div>
                 </div>
             )}
 
-            {/* 1. File Uploader Area */}
+            {showHelp && <InstructionsModal onClose={() => setShowHelp(false)} />}
+
+            {/* 1. FILE UPLOAD PHASE */}
             <FileUploader
                 onDrop={onDrop}
                 file={file}

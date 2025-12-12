@@ -139,21 +139,21 @@ const ResultsViewer = ({ generatedQuestions }) => {
                         className="px-3 py-1.5 bg-slate-700/50 text-slate-300 rounded hover:bg-slate-700 text-sm flex items-center gap-2 transition-colors"
                         title="Copiar JSON"
                     >
-                        <Copy className="w-4 h-4" />
+                        <Copy className="w-4 h-4" /> Copiar
                     </button>
                     <button
                         onClick={downloadJson}
                         className="px-3 py-1.5 bg-green-500/20 text-green-300 rounded hover:bg-green-500/30 text-sm flex items-center gap-2 transition-colors"
                         title="Descargar JSON"
                     >
-                        <Download className="w-4 h-4" />
+                        <Download className="w-4 h-4" /> Bajar JSON
                     </button>
                     <button
                         onClick={downloadPdf}
                         className="px-3 py-1.5 bg-red-500/20 text-red-300 rounded hover:bg-red-500/30 text-sm flex items-center gap-2 transition-colors"
                         title="Descargar PDF"
                     >
-                        <FileDown className="w-4 h-4" />
+                        <FileDown className="w-4 h-4" /> Bajar PDF
                     </button>
                 </div>
             </div>

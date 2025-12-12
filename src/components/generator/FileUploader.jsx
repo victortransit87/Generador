@@ -43,21 +43,21 @@ const FileUploader = ({ onDrop, file, isProcessing, progressStatus, generationPh
                     {generationPhase === 'idle' && (
                         <div className="flex flex-col gap-3 pt-4">
                             <button
-                                onClick={onAnalyze}
+                                onClick={onAiIndex}
                                 disabled={isProcessing}
                                 className="btn-primary py-3 text-lg shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
                             >
-                                {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : '🔍'}
-                                {isProcessing ? 'Analizando...' : 'Detectar Índice del Archivo'}
+                                <span>✨</span>
+                                {isProcessing ? 'Procesando...' : 'Crear Índice Inteligente (IA)'}
                             </button>
 
                             <button
-                                onClick={onAiIndex}
+                                onClick={onAnalyze}
                                 disabled={isProcessing}
-                                className="btn-secondary py-3 text-lg flex items-center justify-center gap-2"
+                                className="py-3 text-sm text-indigo-300 border border-indigo-500/30 rounded-lg hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
                             >
-                                <span>✨</span>
-                                <span>Crear Índice Inteligente (IA)</span>
+                                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : '↺'}
+                                Detectar Índice Clásico (Regex)
                             </button>
                         </div>
                     )}
