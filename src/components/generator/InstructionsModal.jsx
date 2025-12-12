@@ -71,6 +71,13 @@ const InstructionsModal = ({ onClose }) => {
                                     <p className="text-sm">Configura la dificultad y pulsa "Generar Todo" o ve lote por lote. Al final, podrás descargar un PDF o hacer el test interactivo.</p>
                                 </div>
                             </div>
+                            <div className="flex gap-4">
+                                <span className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold border border-indigo-500/30">5</span>
+                                <div>
+                                    <h3 className="font-bold text-white mb-1">Hacer Test Interactivo</h3>
+                                    <p className="text-sm">Pulsa "Hacer Test" para descargar el examen (JSON) y abrir la web del lector. Luego sube ese archivo allí.</p>
+                                </div>
+                            </div>
                         </div>
                     ) : (
                         <div className="space-y-6 text-slate-300">
