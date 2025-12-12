@@ -19,14 +19,15 @@ let cachedModel = null;
 
 // Comprehensive list of candidates to try (Newest/Best first)
 // Updated for Dec 2025 Standards
+// Updated for Real Availability (Late 2024/2025)
 export const CANDIDATE_MODELS = [
-  "gemini-3.0-pro",         // Razonamiento profundo (2025)
-  "gemini-2.5-pro",         // Punto medio sólido
-  "gemini-2.5-flash",       // Chatbots rápidos, bajo coste
-  "gemini-2.0-flash-exp",   // Legacy 2024 experimental
-  "gemini-1.5-pro-latest",  // Legacy 1.5
-  "gemini-1.5-flash-latest",// Legacy 1.5
-  "gemini-pro"              // Ancient fallback
+  "gemini-2.5-flash",       // User specified current model
+  "gemini-2.5-pro",         // User specified current model
+  "gemini-1.5-flash",       // Current Workhorse (Fast, Cheap, Stable)
+  "gemini-1.5-pro",         // High Intelligence
+  "gemini-2.0-flash-exp",   // Experimental (Fastest)
+  "gemini-1.5-flash-8b",    // Ultra-light
+  "gemini-pro"              // Legacy Fallback
 ];
 
 export const detectBestModel = async (apiKey) => {
