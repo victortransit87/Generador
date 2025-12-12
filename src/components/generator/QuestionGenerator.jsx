@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { AlertCircle, FileText } from 'lucide-react';
 import { extractTextFromFile } from '../../utils/fileParser';
-import { analyzeTopics, generateQuestions } from '../../services/gemini';
+import { analyzeTopics, generateQuestions as generateGeminiQuestions, generateStructuralIndex as generateGeminiIndex } from '../../services/gemini';
+import { generateQuestionsDeepSeek, analyzeTopicsDeepSeek, generateStructuralIndexDeepSeek, validateDeepSeekConnection } from '../../services/deepseek';
 
 // Sub-components
 import FileUploader from './FileUploader';
@@ -12,6 +13,7 @@ import ResultsViewer from './ResultsViewer';
 
 const QuestionGenerator = () => {
     // 1. Core State
+    const [provider, setProvider] = useState('gemini'); // 'gemini' | 'deepseek'
     const [apiKey, setApiKey] = useState('');
     const [file, setFile] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -35,11 +37,18 @@ const QuestionGenerator = () => {
     const [targetLanguage, setTargetLanguage] = useState('Spanish');
     const [generationStrategy, setGenerationStrategy] = useState('medium');
 
-    // Load API Key on mount
+    // Load API Key on mount or provider change
     useEffect(() => {
-        const savedKey = localStorage.getItem('gemini_api_key');
-        if (savedKey) setApiKey(savedKey);
-    }, []);
+        const keyName = provider === 'gemini' ? 'gemini_api_key' : 'deepseek_api_key';
+        const savedKey = localStorage.getItem(keyName);
+        setApiKey(savedKey || '');
+    }, [provider]);
+
+    const handleApiKeyChange = (val) => {
+        setApiKey(val);
+        const keyName = provider === 'gemini' ? 'gemini_api_key' : 'deepseek_api_key';
+        localStorage.setItem(keyName, val);
+    };
 
     // Handlers
     const onDrop = useCallback(async (acceptedFiles) => {
@@ -88,7 +97,12 @@ const QuestionGenerator = () => {
             setProgressStatus('Analizando estructura del documento...');
             setError(null);
 
-            const detectedTopics = await analyzeTopics(apiKey, extractedTextRef.current);
+            let detectedTopics;
+            if (provider === 'gemini') {
+                detectedTopics = await analyzeTopics(apiKey, extractedTextRef.current);
+            } else {
+                detectedTopics = await analyzeTopicsDeepSeek(apiKey, extractedTextRef.current);
+            }
 
             if (!detectedTopics || detectedTopics.length === 0) throw new Error("No topics found");
 
@@ -114,8 +128,12 @@ const QuestionGenerator = () => {
             setGenerationPhase('analyzing');
             setProgressStatus('La IA está creando un índice inteligente...');
 
-            const { generateStructuralIndex } = await import('../../services/gemini');
-            const detectedTopics = await generateStructuralIndex(apiKey, extractedTextRef.current);
+            let detectedTopics;
+            if (provider === 'gemini') {
+                detectedTopics = await generateGeminiIndex(apiKey, extractedTextRef.current);
+            } else {
+                detectedTopics = await generateStructuralIndexDeepSeek(apiKey, extractedTextRef.current);
+            }
 
             setTopics(detectedTopics);
             // Default select all
@@ -359,14 +377,26 @@ const QuestionGenerator = () => {
             // API expects { topic: string, count: number }
             const apiBatch = batchTopics.map(b => ({ topic: b.topic, count: b.count }));
 
-            const batchResults = await generateQuestions(
-                apiKey,
-                extractedTextRef.current,
-                apiBatch,
-                5,
-                targetLanguage,
-                abortControllerRef.current.signal
-            );
+            let batchResults;
+            if (provider === 'gemini') {
+                batchResults = await generateGeminiQuestions(
+                    apiKey,
+                    extractedTextRef.current,
+                    apiBatch,
+                    5,
+                    targetLanguage,
+                    abortControllerRef.current.signal
+                );
+            } else {
+                batchResults = await generateQuestionsDeepSeek(
+                    apiKey,
+                    extractedTextRef.current,
+                    apiBatch,
+                    5,
+                    targetLanguage,
+                    abortControllerRef.current.signal
+                );
+            }
 
             if (Array.isArray(batchResults)) {
                 // We need to ensure the questions have the correct 'epigrafe' index.
@@ -469,24 +499,41 @@ const QuestionGenerator = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+                        <button
+                            onClick={() => setProvider('gemini')}
+                            className={`px-3 py-1 text-xs rounded transition-all ${provider === 'gemini' ? 'bg-indigo-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            Gemini
+                        </button>
+                        <button
+                            onClick={() => setProvider('deepseek')}
+                            className={`px-3 py-1 text-xs rounded transition-all flex items-center gap-1 ${provider === 'deepseek' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            <span>🐋</span> DeepSeek
+                        </button>
+                    </div>
+
                     <input
                         type="password"
-                        placeholder="Pegar Gemini API Key"
+                        placeholder={`Pegar API Key de ${provider === 'gemini' ? 'Google' : 'DeepSeek'}`}
                         value={apiKey}
-                        onChange={(e) => {
-                            setApiKey(e.target.value);
-                            localStorage.setItem('gemini_api_key', e.target.value);
-                        }}
+                        onChange={(e) => handleApiKeyChange(e.target.value)}
                         className="bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none w-48 transition-all"
                     />
                     <button
                         onClick={async () => {
                             if (!apiKey) return alert("Introduce una API Key primero.");
                             try {
-                                const { detectBestModel } = await import('../../services/gemini');
-                                alert("Conectando...");
-                                const model = await detectBestModel(apiKey);
-                                alert(`✅ Conectado: ${model}`);
+                                alert(`Conectando con ${provider === 'gemini' ? 'Gemini' : 'DeepSeek'}...`);
+                                if (provider === 'gemini') {
+                                    const { detectBestModel } = await import('../../services/gemini');
+                                    const model = await detectBestModel(apiKey);
+                                    alert(`✅ Conectado: ${model}`);
+                                } else {
+                                    const models = await validateDeepSeekConnection(apiKey);
+                                    alert(`✅ Conectado: ${models[0]}`);
+                                }
                             } catch (e) { alert("❌ Error: " + e.message); }
                         }}
                         className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors"

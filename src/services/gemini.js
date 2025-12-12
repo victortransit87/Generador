@@ -76,7 +76,7 @@ const getWorkingModel = async (apiKey, genAI, prompt) => {
 };
 
 // Helper for robust JSON parsing
-const parseGeminiJson = (text) => {
+export const parseAiJson = (text) => {
   try {
     // 1. Strip Markdown code blocks
     let clean = text.replace(/```json/g, '').replace(/```/g, '');
@@ -142,10 +142,10 @@ export const generateQuestions = async (apiKey, text, topics, countPerTopic = 5,
         abortSignal.addEventListener('abort', () => reject(new Error("AbortedByUser")));
       });
       const result = await Promise.race([aiPromise, abortPromise]);
-      return parseGeminiJson(result.response.text());
+      return parseAiJson(result.response.text());
     } else {
       const result = await aiPromise;
-      return parseGeminiJson(result.response.text());
+      return parseAiJson(result.response.text());
     }
 
   } catch (error) {
@@ -191,7 +191,7 @@ export const analyzeTopics = async (apiKey, text) => {
 
   try {
     const result = await getWorkingModel(apiKey, genAI, prompt);
-    return parseGeminiJson(result.response.text());
+    return parseAiJson(result.response.text());
   } catch (e) {
     // Ultimate fallback
     return [{ topic: "General Content", count: 15 }];
@@ -208,7 +208,7 @@ export const generateStructuralIndex = async (apiKey, text) => {
    `;
   try {
     const result = await getWorkingModel(apiKey, genAI, prompt);
-    return parseGeminiJson(result.response.text());
+    return parseAiJson(result.response.text());
   } catch (e) {
     // Pass the real error message for debugging
     throw new Error("AI Index Error: " + e.message);
