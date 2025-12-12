@@ -460,7 +460,10 @@ const QuestionGenerator = () => {
 
             if (tempIndex >= topics.length) {
                 setGenerationPhase('completed');
+                // Stop auto-generation
                 setIsAutoGenerating(false);
+            } else {
+                // IMPORTANT: Reset phase to trigger next loop
                 setGenerationPhase('ready_to_generate');
             }
 
