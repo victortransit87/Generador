@@ -20,15 +20,21 @@ let cachedModel = null;
 // Comprehensive list of candidates to try (Newest/Best first)
 // Updated for Dec 2025 Standards
 // Updated for Real Availability (Late 2024/2025)
+// Updated for Real Availability (Late 2024/2025)
+// Prioritizing user request while keeping safe fallbacks
 export const CANDIDATE_MODELS = [
-  "gemini-2.5-flash",       // User specified current model
-  "gemini-2.5-pro",         // User specified current model
-  "gemini-1.5-flash",       // Current Workhorse (Fast, Cheap, Stable)
-  "gemini-1.5-pro",         // High Intelligence
-  "gemini-2.0-flash-exp",   // Experimental (Fastest)
-  "gemini-1.5-flash-8b",    // Ultra-light
-  "gemini-pro"              // Legacy Fallback
+  "gemini-3.0-pro",         // User requested
+  "gemini-3.0-flash",       // User requested
+  "gemini-2.5-flash",       // User specified priority
+  "gemini-2.5-pro",         // User specified priority
+  "gemini-1.5-flash",       // Stable
+  "gemini-1.5-pro",         // Stable
+  "gemini-1.5-flash-latest", // Fallback Alias
+  "gemini-1.5-pro-latest",   // Fallback Alias
+  "gemini-pro"              // Legacy
 ];
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const detectBestModel = async (apiKey) => {
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -38,8 +44,9 @@ export const detectBestModel = async (apiKey) => {
 
   for (const modelName of CANDIDATE_MODELS) {
     try {
+      console.log(`Testing model: ${modelName}...`);
       const model = genAI.getGenerativeModel({ model: modelName });
-      // minimal test
+      // Minimal test
       await model.generateContent("Test connection");
       console.log(`✅ Model found: ${modelName}`);
       cachedModel = modelName;
@@ -47,10 +54,13 @@ export const detectBestModel = async (apiKey) => {
     } catch (e) {
       console.warn(`❌ ${modelName} failed: ${e.message}`);
       errors.push(`${modelName}: ${e.message}`);
+      // Small delay to prevent rate-limit cascading
+      await delay(500);
     }
   }
 
-  throw new Error(`No working Gemini model found.\nDetails: ${errors.map(e => e.split(':')[0]).join(', ')} failed.`);
+  // If we reach here, absolutely nothing worked.
+  throw new Error(`No working Gemini model found. Tried: ${CANDIDATE_MODELS.join(', ')}.\nErrors: ${errors.map(e => e.substring(0, 50)).join(' | ')}`);
 };
 
 // 2. Helper to get working model
