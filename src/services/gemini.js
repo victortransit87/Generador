@@ -100,30 +100,37 @@ const parseGeminiJson = (text) => {
 export const generateQuestions = async (apiKey, text, topics, countPerTopic = 5, targetLanguage = 'Spanish', abortSignal = null) => {
   const genAI = new GoogleGenerativeAI(apiKey);
   const prompt = `
-    Generate a HIGH-LEVEL / MEDIUM-HIGH difficulty exam based on the text.
-    
-    CRITICAL RULES:
-    1. EXACTLY 3 Options per question (A, B, C). ONE correct.
-    2. NO "All of the above", "None of the above", "Both A and B", etc.
-    3. High difficulty: Distractors must be plausible. No obvious answers.
-    4. "Absolute Truth": Use the file content as truth, even if factually wrong. Meaning stays in context of the file.
-    5. Balance: Ensure correct answers (0, 1, 2) are balanced.
-    6. ANTI-PATTERN: Never put the same correct answer index twice in a row (e.g. if Q1 is A, Q2 cannot be A).
-    7. Batching: Generate 10 questions. Cover the topic thoroughly.
-    
-    Output Format (JSON Array of 10 objects):
-    {
-      "epigrafe": 1, // Integer: Extract the main section number (1, 2, or 3) from the topic.
-      "question": "Question text...",
-      "options": ["Option A text", "Option B text", "Option C text"],
-      "answer": 0, // 0 for A, 1 for B, 2 for C.
-      "explanation": "Brief explanation of why it is correct based on the text."
-    }
+    ROLE: You are an expert examiner creating a professional certification exam. 
+    Your goal is to create realistic, high-quality questions based STRICTLY on the provided text sections.
 
-    Topics to cover: ${JSON.stringify(topics)}
-    Target Language: ${targetLanguage}
+    STRICT NEGATIVE CONSTRAINTS (DO NOT DO THIS):
+    1. DO NOT start options with prefixes like "a)", "A.", "1.", "-". Just the text.
+    2. DO NOT mention the source text in the question. phrases like "According to the text", "In the provided section", "As mentioned in [Topic Name]" are ESTRICTLY FORBIDDEN.
+    3. DO NOT output questions that rely on "All of the above" or "None of the above" unless absolutely necessary for logic. Avoid them.
+    4. DO NOT make answers obvious. Distractors must be highly plausible.
+
+    QUALITY RULES:
+    1. SELF-CONTAINED: Each question must stand alone. Example: Instead of "What does this component do?", say "What is the primary function of the [Specific Component]?"
+    2. FORMAT: EXACTLY 3 Options per question. ONE correct.
+    3. DIFFICULTY: Upper-Intermediate to Advanced. Focus on nuances, exceptions, and application of concepts, not just definitions.
+    4. BALANCE: Ensure correct placement (index 0, 1, 2) varies randomly.
+
+    Output Format (JSON Array of objects):
+    [
+      {
+        "epigrafe": 1, // The integer ID of the topic this question belongs to (from the provided list).
+        "question": "The professional phrasing of the question...",
+        "options": ["Correct or Incorrect Option Text Only", "Another Option", "Third Option"],
+        "answer": 0, // 0, 1, or 2 indicating the index of the correct option.
+        "explanation": "Brief reasoning citing the specific concept."
+      }
+    ]
+
+    Topics to cover in this batch: ${JSON.stringify(topics)}
+    Target Language: ${targetLanguage} (Must be professional and formal)
     
-    Text: ${text.substring(0, 50000)}
+    SOURCE TEXT TO ANALYZE: 
+    ${text.substring(0, 50000)}
   `;
 
   try {

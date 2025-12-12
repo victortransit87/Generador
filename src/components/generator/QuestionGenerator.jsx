@@ -24,6 +24,7 @@ const QuestionGenerator = () => {
 
     // 2. Generation Logic State
     const [topics, setTopics] = useState(null);
+    const [selectedTopics, setSelectedTopics] = useState(new Set());
     const [currentTopicIndex, setCurrentTopicIndex] = useState(0);
     const [generationPhase, setGenerationPhase] = useState('idle'); // idle, analyzing, topic_confirmation, ready_to_generate, generating, completed
     const [progressStatus, setProgressStatus] = useState('');
@@ -92,6 +93,7 @@ const QuestionGenerator = () => {
             if (!detectedTopics || detectedTopics.length === 0) throw new Error("No topics found");
 
             setTopics(detectedTopics);
+            setSelectedTopics(new Set(detectedTopics.map((_, i) => i)));
             setCurrentTopicIndex(0);
             setGeneratedQuestions([]);
             setGenerationPhase('topic_confirmation');
@@ -116,6 +118,9 @@ const QuestionGenerator = () => {
             const detectedTopics = await generateStructuralIndex(apiKey, extractedTextRef.current);
 
             setTopics(detectedTopics);
+            // Default select all
+            setSelectedTopics(new Set(detectedTopics.map((_, i) => i)));
+
             setGeneratedQuestions([]);
             setGenerationPhase('topic_confirmation');
         } catch (e) {
@@ -125,6 +130,42 @@ const QuestionGenerator = () => {
             setIsProcessing(false);
             setProgressStatus('');
         }
+    };
+
+    // Selection Logic
+    const handleToggleTopic = (index) => {
+        if (!topics) return;
+        const newSet = new Set(selectedTopics);
+        if (newSet.has(index)) {
+            newSet.delete(index);
+        } else {
+            newSet.add(index);
+        }
+        setSelectedTopics(newSet);
+    };
+
+    const handleToggleAll = (shouldSelectAll) => {
+        if (!topics) return;
+        if (shouldSelectAll) {
+            setSelectedTopics(new Set(topics.map((_, i) => i)));
+        } else {
+            setSelectedTopics(new Set());
+        }
+    };
+
+    const handleConfirmTopics = () => {
+        // Find the first selected topic to start with
+        let firstSelectedIndex = 0;
+        if (topics && selectedTopics) {
+            for (let i = 0; i < topics.length; i++) {
+                if (selectedTopics.has(i)) {
+                    firstSelectedIndex = i;
+                    break;
+                }
+            }
+        }
+        setCurrentTopicIndex(firstSelectedIndex);
+        setGenerationPhase('ready_to_generate');
     };
 
     // State for Restoration
@@ -236,48 +277,150 @@ const QuestionGenerator = () => {
             let currentBatchCount = 0;
             let tempIndex = currentTopicIndex;
 
+            // Strategy Targets
+            let targetCount = 10;
+            if (generationStrategy === 'fast') targetCount = 1;
+            else if (generationStrategy === 'medium') targetCount = 3;
+            else if (generationStrategy === 'complete') targetCount = 20;
+
+            // Count existing questions per topic
+            const existingCounts = {};
+            if (generatedQuestions) {
+                generatedQuestions.forEach(q => {
+                    // Epigrafe is 1-based usually in my logic, matches index + 1
+                    const idx = (q.epigrafe || 1) - 1;
+                    existingCounts[idx] = (existingCounts[idx] || 0) + 1;
+                });
+            }
+
             while (tempIndex < topics.length) {
-                const topic = topics[tempIndex];
-
-                // Determine base count from Strategy
-                let requestedCount = 10; // Default base
-                if (generationStrategy === 'fast') requestedCount = 1;
-                else if (generationStrategy === 'medium') requestedCount = 3;
-                else if (generationStrategy === 'complete') requestedCount = 20; // 20 per topic for deep mode
-
-                // If topic provided a specific count (from heuristic), respect it IF it's reasonable
-                if (topic.count) {
-                    // Only override if topic.count is higher than strategy default? 
-                    // Or just trust strategy? 
-                    // Let's trust strategy as the user override.
+                // 1. Check if selected
+                if (!selectedTopics.has(tempIndex)) {
+                    tempIndex++;
+                    continue; // Skip unselected
                 }
 
-                // Check if already done (Restoration check)
-                // If we are restoring, we might want to skip topics that are already fully populated?
-                // But the user might want to *add* more.
-                // Let's rely on currentTopicIndex. If the user set it manually or via restore, we start there.
+                // 2. Check overlap logic (Gap Fill)
+                const currentCount = existingCounts[tempIndex] || 0;
+                let needed = targetCount - currentCount;
 
-                // Stop if budget exceeded
-                if (currentBatchCount + requestedCount > QUESTION_BUDGET && batchTopics.length > 0) break;
+                // If fully satisfied, skip
+                if (needed <= 0) {
+                    tempIndex++;
+                    continue;
+                }
 
-                batchTopics.push({ topic: topic.topic, count: requestedCount });
-                currentBatchCount += requestedCount;
+                // 3. Add to batch
+                if (currentBatchCount + needed > QUESTION_BUDGET) {
+                    // If fitting "needed" exceeds budget, can we fit partial?
+                    // Strategy: If batch is empty, squeeze it in (max 20).
+                    // If batch has items, break and save for next.
+                    if (batchTopics.length > 0) break;
+
+                    // If needed > 20 (unlikely with header limit), cap at 20.
+                    if (needed > QUESTION_BUDGET) needed = QUESTION_BUDGET;
+                }
+
+                batchTopics.push({ topic: topics[tempIndex].topic, count: needed, originalIndex: tempIndex });
+                currentBatchCount += needed;
+
+                // If we filled the budget exactly, we might want to break, or loop once more to seeing check.
+                // Actually, let's just break. The next loop will re-evaluate.
+                // IMPORTANT: If we generated 'needed', next time 'currentCount' will be higher.
+                // But we won't know that until the AI returns.
+                // So we must increment tempIndex so UI moves forward optimistically?
+                // No, for the Loop logic, we want to advance tempIndex so we resume AFTER this batch.
+                if (currentBatchCount >= QUESTION_BUDGET) {
+                    tempIndex++;
+                    break;
+                }
+
                 tempIndex++;
             }
 
-            setProgressStatus(`Generando ${currentBatchCount} preguntas para ${batchTopics.length} temas...`);
+            // If no topics needed work, we are done
+            if (batchTopics.length === 0) {
+                // Check if we scanned everything
+                if (tempIndex >= topics.length) {
+                    setGenerationPhase('completed');
+                    setIsAutoGenerating(false);
+                    setProgressStatus('Todos los temas completados según la configuración actual.');
+                } else {
+                    // Maybe just finished selection block?
+                    setCurrentTopicIndex(tempIndex);
+                }
+                setIsProcessing(false);
+                return;
+            }
+
+            setProgressStatus(`Generando ${currentBatchCount} preguntas para ${batchTopics.length} temas (Rellenando huecos)...`);
+
+            // Map back to format expected by API?
+            // API expects { topic: string, count: number }
+            const apiBatch = batchTopics.map(b => ({ topic: b.topic, count: b.count }));
 
             const batchResults = await generateQuestions(
                 apiKey,
                 extractedTextRef.current,
-                batchTopics,
+                apiBatch,
                 5,
                 targetLanguage,
-                abortControllerRef.current.signal // Pass signal
+                abortControllerRef.current.signal
             );
 
             if (Array.isArray(batchResults)) {
-                setGeneratedQuestions(prev => prev ? [...prev, ...batchResults] : batchResults);
+                // We need to ensure the questions have the correct 'epigrafe' index.
+                // The API might assign 1, 2, 3... relative to the batch.
+                // We need to map them back to absolute topic indices.
+                // The prompt says "Epigrafe X".
+                // Current AI service logic relies on the order.
+                // Let's manually patch the 'epigrafe' field to match 'originalIndex + 1'.
+
+                // Re-distribute questions to topics?
+                // We know we asked for [Count A, Count B]. The result is a flat array.
+                // We assume order is preserved.
+
+                let resultCursor = 0;
+                const fixedResults = [];
+
+                batchTopics.forEach(bt => {
+                    // For each topic in batch, grab 'count' questions (or as many as AI gave).
+                    // This is tricky if AI returned fewer.
+                    // Simplified: Just assigning sequential Epigrafe numbers based on the batch topics isn't enough if we skipped topics.
+                    // We want Epigrafe ID to match the Topic Index + 1.
+
+                    // Let's assume the AI returns them roughly in order. We can try to align?
+                    // Or simpler: Trust the AI's 'epigrafe' number is 1..N based on the prompt list.
+                    // If batch has Topic A (1st in prompt) and Topic B (2nd in prompt).
+                    // AI returns Epigrafe 1 -> Topic A. Epigrafe 2 -> Topic B.
+                    // We map batchTopics[0] -> ID batchTopics[0].originalIndex + 1.
+
+                    // We iterate the results and try to assign?
+                    // No, easier: update generatesQuestions to just append.
+                    // The 'epigrafe' field is mostly for display/sorting.
+                    // Let's blindly trust for now, or patch if critical.
+                    // User request: "Check numbers".
+                    // I will perform a naive patch if 'epigrafe' 1..N matches batch order.
+                });
+
+                // Correction: The AI Service logic likely assigns Epigrafe 1, 2, 3 to the batch.
+                // We should remap these to the GLOBAL topic index.
+                let currentBatchTopicIndex = 0;
+                let questionsForCurrentTopic = 0;
+
+                const mappedResults = batchResults.map(q => {
+                    // Heuristic to assign to correct global topic
+                    // We move to next batch topic if we exceed count? Or rely on 'epigrafe' provided by AI?
+                    // AI provides 'epigrafe': 1 for first topic in list, 2 for second.
+                    const relativeEp = q.epigrafe || 1;
+                    const batchTopic = batchTopics[relativeEp - 1]; // 0-indexed
+                    if (batchTopic) {
+                        return { ...q, epigrafe: batchTopic.originalIndex + 1 };
+                    }
+                    return q;
+                });
+
+                setGeneratedQuestions(prev => prev ? [...prev, ...mappedResults] : mappedResults);
             }
 
             setCurrentTopicIndex(tempIndex);
@@ -285,7 +428,6 @@ const QuestionGenerator = () => {
             if (tempIndex >= topics.length) {
                 setGenerationPhase('completed');
                 setIsAutoGenerating(false);
-            } else {
                 setGenerationPhase('ready_to_generate');
             }
 
@@ -389,11 +531,14 @@ const QuestionGenerator = () => {
                         topics={topics}
                         onAnalyze={handleAnalyze}
                         onAiIndex={handleAiIndexCreation}
-                        onConfirm={() => setGenerationPhase('ready_to_generate')}
+                        onConfirm={handleConfirmTopics}
                         isProcessing={isProcessing}
                         onSaveTopics={handleSaveTopics}
                         onLoadTopics={handleLoadTopics}
                         onRestoreSession={handleRestoreJson}
+                        selectedTopics={selectedTopics}
+                        onToggleTopic={handleToggleTopic}
+                        onToggleAll={handleToggleAll}
                     />
                 </>
             )}

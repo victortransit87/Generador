@@ -1,27 +1,74 @@
 import React from 'react';
 import { Check, Loader2 } from 'lucide-react';
 
-const TopicManager = ({ topics, onAnalyze, onAiIndex, onConfirm, isProcessing, onSaveTopics, onLoadTopics, onRestoreSession }) => {
+const TopicManager = ({
+    topics,
+    onAnalyze,
+    onAiIndex,
+    onConfirm,
+    isProcessing,
+    onSaveTopics,
+    onLoadTopics,
+    onRestoreSession,
+    selectedTopics,
+    onToggleTopic,
+    onToggleAll
+}) => {
     if (!topics) return null;
 
     return (
         <div className="glass-panel p-6 border-indigo-500/50 space-y-4 animate-in slide-in-from-bottom-5">
-            <div className="flex items-center gap-3 text-indigo-400 mb-2">
-                <Check className="w-6 h-6" />
-                <h3 className="text-xl font-bold">Índice Detectado</h3>
+            <div className="flex items-center justify-between text-indigo-400 mb-2">
+                <div className="flex items-center gap-3">
+                    <Check className="w-6 h-6" />
+                    <h3 className="text-xl font-bold">Índice Detectado</h3>
+                </div>
+                <div className="text-xs flex gap-2">
+                    <button
+                        onClick={() => onToggleAll(true)}
+                        className="text-indigo-300 hover:text-white underline"
+                    >
+                        Todos
+                    </button>
+                    <span className="text-slate-600">|</span>
+                    <button
+                        onClick={() => onToggleAll(false)}
+                        className="text-indigo-300 hover:text-white underline"
+                    >
+                        Ninguno
+                    </button>
+                </div>
             </div>
 
             <div className="max-h-60 overflow-y-auto bg-slate-900/50 rounded-lg p-3 space-y-2 custom-scrollbar">
-                {topics.map((t, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-sm p-2 bg-slate-800/30 rounded border border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                        <span className="text-slate-200 font-medium truncate flex-1 mr-4" title={t.topic}>
-                            {t.topic}
-                        </span>
-                        <span className="text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded text-xs whitespace-nowrap border border-indigo-500/20">
-                            ~{t.count} pregs
-                        </span>
-                    </div>
-                ))}
+                {topics.map((t, idx) => {
+                    const isSelected = selectedTopics ? selectedTopics.has(idx) : true;
+                    return (
+                        <div
+                            key={idx}
+                            onClick={() => onToggleTopic && onToggleTopic(idx)}
+                            className={`flex justify-between items-center text-sm p-2 rounded border cursor-pointer transition-all
+                                ${isSelected
+                                    ? 'bg-indigo-500/20 border-indigo-500/50'
+                                    : 'bg-slate-800/30 border-slate-700/50 opacity-60 hover:opacity-100 hover:bg-slate-800/50'
+                                }`}
+                        >
+                            <div className="flex items-center gap-3 flex-1 overflow-hidden">
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center
+                                    ${isSelected ? 'bg-indigo-500 border-indigo-400' : 'border-slate-500'}
+                                `}>
+                                    {isSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
+                                <span className={`font-medium truncate ${isSelected ? 'text-white' : 'text-slate-400'}`} title={t.topic}>
+                                    {t.topic}
+                                </span>
+                            </div>
+                            <span className="text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded text-xs whitespace-nowrap border border-indigo-500/20 ml-2">
+                                ~{t.count} pregs
+                            </span>
+                        </div>
+                    );
+                })}
             </div>
 
             {/* Actions Row 1: Refinement */}
@@ -92,11 +139,11 @@ const TopicManager = ({ topics, onAnalyze, onAiIndex, onConfirm, isProcessing, o
             <div className="pt-2">
                 <button
                     onClick={onConfirm}
-                    disabled={isProcessing}
+                    disabled={isProcessing || (selectedTopics && selectedTopics.size === 0)}
                     className="w-full btn-primary py-3 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                     <Check className="w-5 h-5" />
-                    Confirmar y Empezar
+                    Confirmar y Empezar ({selectedTopics ? selectedTopics.size : 0})
                 </button>
             </div>
         </div>
