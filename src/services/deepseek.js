@@ -2,7 +2,11 @@
 import { parseAiJson } from './gemini';
 
 // DeepSeek API Configuration
-const DEEPSEEK_API_URL = "https://api.deepseek.com/v1";
+// Official Endpoint: https://api.deepseek.com/chat/completions
+// PROXY: If in Development, use Vite Proxy to bypass CORS.
+const DEEPSEEK_API_URL = import.meta.env.DEV
+    ? "/deepseek-proxy"
+    : "https://api.deepseek.com";
 
 export const validateDeepSeekConnection = async (apiKey) => {
     try {
@@ -101,11 +105,16 @@ export const generateQuestionsDeepSeek = async (apiKey, text, topics, countPerTo
 };
 
 export const analyzeTopicsDeepSeek = async (apiKey, text) => {
-    // Regular Regex is preferred, but this is the AI Fallback
     const prompt = `
-     Analyze this text and extract the Table of Contents (Index).
-     Return a JSON array: [{ "topic": "1. Introduction", "count": 10 }, ...]
-     Text: ${text.substring(0, 30000)}
+     ROLE: You are a structural analyzer bot.
+     TASK: Extract the Table of Contents (Index) from the text completely.
+     FORMAT: Return ONLY a valid JSON array. Do not add markdown blocks or text.
+     EXAMPLE:
+     [
+        { "topic": "1. Introduction", "count": 10 },
+        { "topic": "2. Main Concepts", "count": 10 }
+     ]
+     Text to Analyze: ${text.substring(0, 30000)}
    `;
 
     try {
@@ -117,8 +126,11 @@ export const analyzeTopicsDeepSeek = async (apiKey, text) => {
             },
             body: JSON.stringify({
                 model: "deepseek-chat",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.1
+                messages: [
+                    { role: "system", content: "You are a precise JSON extractor. Output valid JSON only." },
+                    { role: "user", content: prompt }
+                ],
+                temperature: 0.0 // Zero temp for deterministic extraction
             })
         });
 
@@ -131,9 +143,15 @@ export const analyzeTopicsDeepSeek = async (apiKey, text) => {
 
 export const generateStructuralIndexDeepSeek = async (apiKey, text) => {
     const prompt = `
-     Create a deep structural index (Table of Contents) for this text.
-     Return JSON array: [{ "topic": "1. Title", "count": 10 }]
-     Text: ${text.substring(0, 50000)}
+     ROLE: You are a structural analyzer bot.
+     TASK: Create a deep structural index (Table of Contents) based on the text.
+     FORMAT: Return ONLY a valid JSON array. No explanations.
+     EXAMPLE:
+     [
+        { "topic": "1. Historical Context", "count": 10 },
+        { "topic": "2. Modern Applications", "count": 10 }
+     ]
+     Text to Analyze: ${text.substring(0, 50000)}
    `;
 
     try {
@@ -145,8 +163,11 @@ export const generateStructuralIndexDeepSeek = async (apiKey, text) => {
             },
             body: JSON.stringify({
                 model: "deepseek-chat",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.1
+                messages: [
+                    { role: "system", content: "You are a precise JSON extractor. Output valid JSON only." },
+                    { role: "user", content: prompt }
+                ],
+                temperature: 0.0 // Zero temp
             })
         });
 
